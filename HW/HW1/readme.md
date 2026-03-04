@@ -1,3 +1,5 @@
+## [AIwhile](https://gemini.google.com/share/a0196b10a62b)
+   [遇到困難問的AI](https://gemini.google.com/share/2c4437a7f3a4)
 
 ## 2. `while` 處理程式碼之設計原理
 
