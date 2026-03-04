@@ -26,7 +26,7 @@ void emit(const char* op, const char* a1, const char* a2, const char* res) {
 }
 
 // =========================================================
-// 2. 詞法分析 (Lexer) - 新增 TK_WHILE
+// 2. 詞法分析 (Lexer)
 // =========================================================
 typedef enum {
     TK_FUNC, TK_RETURN, TK_IF, TK_WHILE, TK_ID, TK_NUM, 
@@ -62,7 +62,7 @@ void next_token() {
         if (strcmp(cur_token.text, "func") == 0) cur_token.type = TK_FUNC;
         else if (strcmp(cur_token.text, "return") == 0) cur_token.type = TK_RETURN;
         else if (strcmp(cur_token.text, "if") == 0) cur_token.type = TK_IF;
-        else if (strcmp(cur_token.text, "while") == 0) cur_token.type = TK_WHILE; // 新增關鍵字
+        else if (strcmp(cur_token.text, "while") == 0) cur_token.type = TK_WHILE;
         else cur_token.type = TK_ID;
     } else {
         cur_token.text[0] = *src; cur_token.text[1] = '\0';
@@ -87,7 +87,7 @@ void next_token() {
 }
 
 // =========================================================
-// 3. 語法解析 (Parser) - 新增 while 處理與 JMP 指令
+// 3. 語法解析 (Parser)
 // =========================================================
 int t_idx = 0;
 void new_t(char *s) { sprintf(s, "t%d", ++t_idx); } 
@@ -106,7 +106,8 @@ void factor(char *res) {
                 emit("PARAM", arg, "-", "-"); count++; 
                 if (cur_token.type == TK_COMMA) next_token();
             }
-            next_token(); new_t(res); char c_str[10]; sprintf(c_str, "%d", count);
+            next_token(); new_t(res); 
+            char c_str[12]; sprintf(c_str, "%d", count); // 修正警告：加大至 12
             emit("CALL", name, c_str, res); 
         } else strcpy(res, name);
     } else if (cur_token.type == TK_LPAREN) {
@@ -145,31 +146,28 @@ void expression(char *res) {
 
 void statement() {
     if (cur_token.type == TK_IF) {
-        next_token(); next_token(); char cond[32]; expression(cond);
-        next_token(); next_token(); 
+        next_token(); next_token(); // 跳過 if (
+        char cond[32]; expression(cond);
+        next_token(); next_token(); // 跳過 ) {
         int jmp_idx = quad_count;
         emit("JMP_F", cond, "-", "?"); 
-        while (cur_token.type != TK_RBRACE) statement();
-        next_token(); 
+        while (cur_token.type != TK_RBRACE && cur_token.type != TK_EOF) statement();
+        next_token(); // 跳過 }
         sprintf(quads[jmp_idx].result, "%d", quad_count); 
     } 
-    else if (cur_token.type == TK_WHILE) { // --- WHILE 實作開始 ---
-        int start_pc = quad_count; // 1. 記錄迴圈起點 (條件判斷前)
-        next_token(); next_token(); 
-        char cond[32]; expression(cond); // 2. 解析條件
-        next_token(); next_token(); 
-        
+    else if (cur_token.type == TK_WHILE) {
+        int start_pc = quad_count; 
+        next_token(); next_token(); // 跳過 while (
+        char cond[32]; expression(cond);
+        next_token(); next_token(); // 跳過 ) {
         int jmp_f_idx = quad_count; 
-        emit("JMP_F", cond, "-", "?"); // 3. 條件為偽時跳出
-        
-        while (cur_token.type != TK_RBRACE) statement(); // 4. 處理迴圈主體
-        next_token(); 
-        
+        emit("JMP_F", cond, "-", "?"); 
+        while (cur_token.type != TK_RBRACE && cur_token.type != TK_EOF) statement();
+        next_token(); // 跳過 }
         char back_target[32]; sprintf(back_target, "%d", start_pc);
-        emit("JMP", "-", "-", back_target); // 5. 無條件跳回起點
-        
-        sprintf(quads[jmp_f_idx].result, "%d", quad_count); // 6. 回填跳出位置
-    } // --- WHILE 實作結束 ---
+        emit("JMP", "-", "-", back_target); 
+        sprintf(quads[jmp_f_idx].result, "%d", quad_count); 
+    }
     else if (cur_token.type == TK_ID) {
         char name[32]; strcpy(name, cur_token.text); next_token();
         if (cur_token.type == TK_ASSIGN) {
@@ -181,6 +179,8 @@ void statement() {
         next_token(); char res[32]; expression(res);
         emit("RET_VAL", res, "-", "-");
         if (cur_token.type == TK_SEMICOLON) next_token();
+    } else if (cur_token.type == TK_SEMICOLON) {
+        next_token();
     }
 }
 
@@ -189,20 +189,20 @@ void parse_program() {
         if (cur_token.type == TK_FUNC) {
             next_token(); char f_name[32]; strcpy(f_name, cur_token.text);
             emit("FUNC_BEG", f_name, "-", "-");
-            next_token(); next_token();
+            next_token(); next_token(); // 跳過 f_name (
             while (cur_token.type == TK_ID) {
                 emit("FORMAL", cur_token.text, "-", "-"); next_token(); 
                 if (cur_token.type == TK_COMMA) next_token();
             }
-            next_token(); next_token();
-            while (cur_token.type != TK_RBRACE) statement();
-            emit("FUNC_END", f_name, "-", "-"); next_token();
+            next_token(); next_token(); // 跳過 ) {
+            while (cur_token.type != TK_RBRACE && cur_token.type != TK_EOF) statement();
+            emit("FUNC_END", f_name, "-", "-"); next_token(); // 跳過 }
         } else statement();
     }
 }
 
 // =========================================================
-// 4. 虛擬機 (Virtual Machine) - 新增 JMP 指令處理
+// 4. 虛擬機 (Virtual Machine)
 // =========================================================
 typedef struct {
     char names[100][32];  
@@ -254,14 +254,15 @@ void vm() {
         else if (strcmp(q.op, "ADD") == 0) set_var(q.result, get_var(q.arg1) + get_var(q.arg2));
         else if (strcmp(q.op, "SUB") == 0) set_var(q.result, get_var(q.arg1) - get_var(q.arg2));
         else if (strcmp(q.op, "MUL") == 0) set_var(q.result, get_var(q.arg1) * get_var(q.arg2));
-        else if (strcmp(q.op, "DIV") == 0) set_var(q.result, get_var(q.arg1) / get_var(q.arg2));
+        else if (strcmp(q.op, "DIV") == 0) {
+            int divisor = get_var(q.arg2);
+            set_var(q.result, divisor != 0 ? get_var(q.arg1) / divisor : 0);
+        }
         else if (strcmp(q.op, "CMP_EQ") == 0) set_var(q.result, get_var(q.arg1) == get_var(q.arg2));
         else if (strcmp(q.op, "CMP_LT") == 0) set_var(q.result, get_var(q.arg1) < get_var(q.arg2));
         else if (strcmp(q.op, "CMP_GT") == 0) set_var(q.result, get_var(q.arg1) > get_var(q.arg2));
         else if (strcmp(q.op, "STORE") == 0) set_var(q.result, get_var(q.arg1));
-        else if (strcmp(q.op, "JMP") == 0) { // 新增：無條件跳轉
-            pc = atoi(q.result); continue;
-        }
+        else if (strcmp(q.op, "JMP") == 0) { pc = atoi(q.result); continue; }
         else if (strcmp(q.op, "JMP_F") == 0) { 
             if (get_var(q.arg1) == 0) { pc = atoi(q.result); continue; }
         }
@@ -283,12 +284,15 @@ void vm() {
         pc++;
     }
 
-    printf("=== VM 執行完畢 ===\n\n全域變數結果:\n");
+    printf("=== VM 執行完畢 ===\n\n變數結果:\n");
     for (int i = 0; i < stack[0].count; i++) {
         if (stack[0].names[i][0] != 't') printf(">> %s = %d\n", stack[0].names[i], stack[0].values[i]);
     }
 }
 
+// =========================================================
+// 5. 主程式
+// =========================================================
 int main(int argc, char *argv[]) {
     if (argc < 2) { printf("用法: %s <source_file>\n", argv[0]); return 1; }
     FILE *f = fopen(argv[1], "rb");
@@ -296,6 +300,6 @@ int main(int argc, char *argv[]) {
     fseek(f, 0, SEEK_END); long length = ftell(f); fseek(f, 0, SEEK_SET);
     char *buffer = malloc(length + 1); fread(buffer, 1, length, f); buffer[length] = '\0'; fclose(f);
     src = buffer;
-    printf("編譯器生成的中間碼 (PC: Quadruples):\n--------------------------------------------\n");
+    printf("編譯生成的中間碼 (PC: Quadruples):\n--------------------------------------------\n");
     next_token(); parse_program(); vm(); free(buffer); return 0;
 }
