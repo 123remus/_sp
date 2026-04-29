@@ -1,0 +1,20 @@
+// 数组示例
+var arr: array = [1, 2, 3, 4, 5];
+
+// 获取数组长度
+print(len(arr));
+
+// 遍历数组
+var i: int = 0;
+while (i < len(arr)) {
+    print(arr[i]);
+    i = i + 1;
+}
+
+// 字符串
+var msg: string = "VoxLang";
+print(msg);
+
+// 字符串拼接
+var full: string = "Hello, " + msg + "!";
+print(full);
